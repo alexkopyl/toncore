@@ -16,8 +16,8 @@ public class ComputeError extends RuntimeException {
     public ComputeError(String message, int exitCode, String debugLogs, String logs) {
         super(message);
         this.exitCode = exitCode;
-        this.debugLogs = debugLogs;
-        this.logs = logs;
+        this.debugLogs = (debugLogs != null && !debugLogs.isEmpty()) ? debugLogs : null;
+        this.logs = (logs != null && !logs.isEmpty()) ? logs : null;
     }
 
     public int getExitCode() {

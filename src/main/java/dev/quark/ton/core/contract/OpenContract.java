@@ -59,7 +59,7 @@ import java.util.Objects;
                 }
 
                 Init init = null;
-                Contract.Init srcInit = src.init();
+                Contract.StateInit srcInit = src.init();
                 if (srcInit != null) {
                     if (!(srcInit.code() instanceof Cell)) {
                         throw new IllegalArgumentException("Invalid init.code");

@@ -14,7 +14,7 @@ public interface Contract {
      * Maybe<{ code: Cell, data: Cell }>
      * Java: nullable
      */
-    Init init();
+    StateInit init();
 
     /**
      * Maybe<ContractABI>
@@ -25,11 +25,11 @@ public interface Contract {
     /**
      * TS init object
      */
-    final class Init {
+    final class StateInit {
         private final Cell code;
         private final Cell data;
 
-        public Init(Cell code, Cell data) {
+        public StateInit(Cell code, Cell data) {
             this.code = code;
             this.data = data;
         }
