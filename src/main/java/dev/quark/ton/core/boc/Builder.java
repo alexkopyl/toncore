@@ -444,6 +444,14 @@ public final class Builder {
         return new Cell(o);
     }
 
+    public Cell endCell(Boolean exotic) {
+        Cell.Options o = new Cell.Options();
+        o.bits = bits.build();
+        o.refs = refs;
+        o.exotic = exotic != null && exotic;
+        return new Cell(o);
+    }
+
     public Cell endCellExotic() {
         Cell.Options o = new Cell.Options();
         o.bits = bits.build();
