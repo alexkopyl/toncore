@@ -3,7 +3,6 @@ import dev.quark.ton.core.address.ExternalAddress;
 import dev.quark.ton.core.boc.BitBuilder;
 import dev.quark.ton.core.boc.BitReader;
 import dev.quark.ton.core.boc.BitString;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -211,6 +210,24 @@ class BitReaderTest {
 
         assertEquals(a, ra);
         assertEquals(b, rb);
+    }
+
+    @Test
+    void shouldReadAnycastAddress() {
+        BitBuilder builder = new BitBuilder();
+        builder.writeUint(0b10, 2); // addr_std tag
+        builder.writeUint(0b1, 1);  // anycast_info present
+        builder.writeUint(2, 5);    // anycast depth
+        builder.writeUint(1, 2);    // rewrite_pfx (2 bits)
+        builder.writeInt(0, 8);     // workchain_id
+        builder.writeUint(BigInteger.ONE, 256); // address hash
+
+        BitString bits = builder.build();
+        BitReader reader = new BitReader(bits);
+
+        Address addr = reader.loadAddress();
+        String expected = "0:4000000000000000000000000000000000000000000000000000000000000001";
+        assertEquals(expected, addr.toRawString());
     }
 
 }

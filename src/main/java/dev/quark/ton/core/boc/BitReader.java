@@ -359,23 +359,59 @@ public final class BitReader {
     }
 
     private Address loadInternalAddress() {
-
         int type = preloadUintAt(2, this.offset).intValueExact();
         if (type != 2) {
             throw new IllegalArgumentException("Invalid address");
         }
 
-        // No Anycast supported
+        // Anycast support (port of TS)
+        Integer rewriteDepth = null;
+        Integer rewritePfx = null;
+
         if (!preloadUintAt(1, this.offset + 2).equals(BigInteger.ZERO)) {
-            throw new IllegalArgumentException("Invalid address");
+            rewriteDepth = preloadUintAt(5, this.offset + 3).intValueExact();
+            // depth is <= 31, fits int
+            rewritePfx = preloadUintAt(rewriteDepth, this.offset + 8).intValueExact();
+
+            // Shift base offset like TS: offset += 5 + rewrite_depth
+            this.offset += 5 + rewriteDepth;
         }
 
         int wc = preloadIntAt(8, this.offset + 3).intValueExact();
         byte[] hash = preloadBufferAt(32, this.offset + 11);
 
-        // Update offset: 2 + 1 + 8 + 256 = 267 bits
-        this.offset += 267;
+        // Apply rewrite prefix if present (port of TS loop)
+        if (rewriteDepth != null && rewritePfx != null && rewriteDepth > 0) {
+            // to be safe, avoid mutating shared buffer from fast path
+            hash = Arrays.copyOf(hash, hash.length);
 
+            int pfx = rewritePfx;
+            int byteIndex = 0;
+            int bitIndex = 0;
+            int bitsRemaining = rewriteDepth;
+
+            while (bitsRemaining > 0) {
+                int bitsInThisByte = Math.min(8 - bitIndex, bitsRemaining);
+                int mask = ((1 << bitsInThisByte) - 1) << (8 - bitIndex - bitsInThisByte);
+
+                int extracted = (pfx >> (bitsRemaining - bitsInThisByte)) & ((1 << bitsInThisByte) - 1);
+                int bits = extracted << (8 - bitIndex - bitsInThisByte);
+
+                int cur = hash[byteIndex] & 0xFF;
+                cur = (cur & ~mask) | bits;
+                hash[byteIndex] = (byte) cur;
+
+                bitsRemaining -= bitsInThisByte;
+                bitIndex += bitsInThisByte;
+                if (bitIndex == 8) {
+                    byteIndex++;
+                    bitIndex = 0;
+                }
+            }
+        }
+
+        // Base addr_std length w/o anycast extension is 267 bits; with anycast we already shifted offset
+        this.offset += 267;
         return new Address(wc, hash);
     }
 
