@@ -298,6 +298,11 @@ public final class Slice {
         }
     }
 
+    public Slice clone() { return cloneSlice(false); }
+
+    public Slice clone(boolean fromStart) { return cloneSlice(fromStart); }
+
+
     @Override
     public String toString() {
         return asCell().toString();

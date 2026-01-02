@@ -5,7 +5,6 @@ import dev.quark.ton.core.boc.Cell;
 import dev.quark.ton.core.boc.Slice;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
@@ -21,12 +20,11 @@ class SliceTest {
     }
 
     private static long nextLongInRange(Random r, long minInclusive, long maxInclusive) {
-        if (minInclusive > maxInclusive) throw new IllegalArgumentException("min > max");
         long bound = maxInclusive - minInclusive + 1;
-        // bound тут небольшой (<= 2^49), поэтому простая схема ок
-        long v = (long) (r.nextDouble() * bound);
+        long v = (r.nextLong() >>> 1) % bound; // без отрицательных
         return minInclusive + v;
     }
+
 
     private static Cell cellWithBits(BitString bits) {
         // аналог new Cell({ bits }).beginParse() из TS
