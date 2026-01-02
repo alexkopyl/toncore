@@ -170,4 +170,26 @@ public final class BitString {
         }
         return new String(out);
     }
+
+    public boolean equals(BitString other) {
+        return equalsBits(other);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof BitString other)) return false;
+        return equalsBits(other);
+    }
+
+    @Override
+    public int hashCode() {
+        // consistent with equalsBits: hash only visible bits
+        int h = 1;
+        h = 31 * h + length;
+        for (int i = 0; i < length; i++) {
+            h = 31 * h + (at(i) ? 1 : 0);
+        }
+        return h;
+    }
 }
