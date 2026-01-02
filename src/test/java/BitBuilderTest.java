@@ -229,4 +229,23 @@ class BitBuilderTest {
             assertEquals(c[1], builder.build().toString());
         }
     }
+
+    @Test
+    void shouldStoreBigintAndNumberForLen1() {
+        BitBuilder builder = new BitBuilder();
+        builder.writeInt(0, 1);
+        builder.writeInt(BigInteger.ZERO, 1);
+        builder.writeInt(-1, 1);
+        builder.writeInt(BigInteger.valueOf(-1), 1);
+        assertEquals(4, builder.length());
+    }
+
+    @Test
+    void shouldStoreBigintAndNumberForLen0() {
+        BitBuilder builder = new BitBuilder();
+        builder.writeInt(0, 0);
+        builder.writeInt(BigInteger.ZERO, 0);
+        assertEquals(0, builder.length());
+    }
+
 }

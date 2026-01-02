@@ -123,7 +123,7 @@ public final class BitBuilder {
                 throw new IllegalArgumentException("value is out of range for " + bits + " bits. Got " + value);
             }
             // TS check is v > 65536 (note: 65536, not 65535). Keep same semantics.
-            if (v < 0 || v > 65536) {
+            if (v < 0 || v >= 65536) { // 0..65535
                 throw new IllegalArgumentException("value is out of range for " + bits + " bits. Got " + value);
             }
             int pos = this.length / 8;
@@ -253,7 +253,7 @@ public final class BitBuilder {
 
         BigInteger abs = value.signum() >= 0 ? value : value.negate();
         int bitLen = abs.bitLength();
-        int sizeBytes = 1 + (bitLen + 7) / 8; // TS: 1 + ceil(bitLen/8)
+        int sizeBytes = (bitLen + 1 + 7) / 8; // TS: ceil((bitLen + 1) / 8)
         int sizeBits = sizeBytes * 8;
 
         writeUint(sizeBytes, headerBits);
