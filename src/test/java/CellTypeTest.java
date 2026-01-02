@@ -11,5 +11,9 @@ class CellTypeTest {
         assertEquals(2, CellType.Library.getCode());
         assertEquals(3, CellType.MerkleProof.getCode());
         assertEquals(4, CellType.MerkleUpdate.getCode());
+        assertEquals(CellType.Ordinary, CellType.fromCode(-1));
+        assertEquals(CellType.MerkleUpdate, CellType.fromCode(4));
+        assertThrows(IllegalArgumentException.class, () -> CellType.fromCode(999));
+
     }
 }
