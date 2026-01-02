@@ -1,6 +1,10 @@
 MIT License
 
-Copyright (c) 2026 Alex Kopyl
+This project includes a Java port/derivative work of ton-org/ton-core.
+Copyright (c) 2022-2023 Whales Corp. (all contributions until 2023-04-27)
+Copyright (c) 2023+ The TON Authors (all contributions from 2023-04-27)
+
+Java port and additional contributions (c) 2026 Alex Kopyl
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
