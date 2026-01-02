@@ -7,6 +7,7 @@ import dev.quark.ton.core.tuple.TupleReader;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -14,11 +15,15 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface ContractProvider {
 
+
+
     // TS: getState(): Promise<ContractState>
     CompletableFuture<ContractState> getState();
 
     // TS: get(name: string, args: TupleItem[]): Promise<ContractGetMethodResult>
     CompletableFuture<ContractGetMethodResult> get(String name, List<Tuple.TupleItem> args);
+    CompletableFuture<ContractGetMethodResult> get(int methodId, List<Tuple.TupleItem> args);
+
 
     // TS: external(message: Cell): Promise<void>
     CompletableFuture<Void> external(Cell message);
@@ -35,15 +40,20 @@ public interface ContractProvider {
     // DTOs
     // ---------------------------------------------------------------------
 
+
     final class ContractGetMethodResult {
         private final TupleReader stack;
         private final BigInteger gasUsed; // nullable
         private final String logs;        // nullable
+        private final Map<Long, BigInteger> extracurrency; // nullable
+        public Map<Long, BigInteger> extracurrency() { return extracurrency; }
 
-        public ContractGetMethodResult(TupleReader stack, BigInteger gasUsed, String logs) {
+
+        public ContractGetMethodResult(TupleReader stack, BigInteger gasUsed, String logs, Map<Long, BigInteger> extracurrency) {
             this.stack = stack;
             this.gasUsed = gasUsed;
             this.logs = logs;
+            this.extracurrency = extracurrency;
         }
 
         public TupleReader stack() { return stack; }

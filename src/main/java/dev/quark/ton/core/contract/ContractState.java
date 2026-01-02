@@ -2,6 +2,7 @@ package dev.quark.ton.core.contract;
 
 import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.Map;
 
 /**
  * Port of ton-core/src/contract/ContractState.ts
@@ -11,11 +12,14 @@ public final class ContractState {
     private final BigInteger balance;
     private final LastTransaction last; // nullable
     private final State state;          // required
+    private final Map<Long, BigInteger> extracurrency; // nullable
+    public Map<Long, BigInteger> extracurrency() { return extracurrency; }
 
-    public ContractState(BigInteger balance, LastTransaction last, State state) {
+    public ContractState(BigInteger balance, LastTransaction last, State state, Map<Long, BigInteger> extracurrency) {
         this.balance = balance;
         this.last = last;
         this.state = state;
+        this.extracurrency = extracurrency;
     }
 
     public BigInteger balance() { return balance; }

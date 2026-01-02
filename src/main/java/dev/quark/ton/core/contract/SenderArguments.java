@@ -5,6 +5,7 @@ import dev.quark.ton.core.boc.Cell;
 import dev.quark.ton.core.types.SendMode;
 
 import java.math.BigInteger;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -34,6 +35,9 @@ public final class SenderArguments {
     private final Boolean bounce;    // nullable
     private final Init init;         // nullable
     private final Cell body;         // nullable
+    private final Map<Long, BigInteger> extracurrency; // nullable
+    public Map<Long, BigInteger> extracurrency() { return extracurrency; }
+
 
     public SenderArguments(
             BigInteger value,
@@ -41,7 +45,7 @@ public final class SenderArguments {
             SendMode sendMode,
             Boolean bounce,
             Init init,
-            Cell body
+            Cell body, Map<Long, BigInteger> extracurrency
     ) {
         this.value = Objects.requireNonNull(value, "value");
         this.to = Objects.requireNonNull(to, "to");
@@ -49,6 +53,7 @@ public final class SenderArguments {
         this.bounce = bounce;
         this.init = init;
         this.body = body;
+        this.extracurrency = extracurrency;
     }
 
     public BigInteger value() { return value; }
