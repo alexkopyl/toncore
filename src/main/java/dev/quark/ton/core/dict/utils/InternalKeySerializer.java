@@ -72,26 +72,25 @@ public final class InternalKeySerializer {
         boolean lastDash = v.length() > 0 && v.charAt(v.length() - 1) == '_';
         boolean isPadded = lastDash || (v.length() % 2 != 0);
 
+        String padded = null;
         if (isPadded) {
             int charLen = lastDash ? (v.length() - 1) : v.length();
-            String padded = v.substring(0, charLen) + "0"; // как в TS
 
             // КЛЮЧЕВОЕ: если padded нечётной длины — отрезаем последний символ.
             // В TS это проходило через Buffer.from(...,'hex') и по факту этот "хвост" не влияет.
-            if ((padded.length() & 1) != 0) {
-                padded = padded.substring(0, padded.length() - 1);
-            }
 
+
+            padded = v.substring(0, charLen) + "0";
             if (!lastDash && ((charLen & 1) != 0)) {
                 // odd nibble count without "_" => exact nibble length (no terminator removal)
-                byte[] buf = fromHex(padded); // теперь padded уже чётной длины
+                byte[] buf = fromHexNodeLike(padded); // теперь padded уже чётной длины
                 return new BitString(buf, 0, charLen << 2);
             } else {
-                byte[] buf = fromHex(padded);
+                byte[] buf = fromHexNodeLike(padded);
                 return PaddedBits.paddedBufferToBits(buf);
             }
         } else {
-            byte[] buf = fromHex(v);
+            byte[] buf = fromHexNodeLike(v);
             return new BitString(buf, 0, v.length() << 2);
         }
     }
@@ -124,5 +123,35 @@ public final class InternalKeySerializer {
             out[i] = (byte) ((hi << 4) | lo);
         }
         return out;
+    }
+
+    private static byte[] fromHexNodeLike(String hex) {
+        if (hex == null) {
+            return new byte[0];
+        }
+
+        int hi = -1;
+        byte[] tmp = new byte[hex.length() / 2 + 1];
+        int out = 0;
+
+        for (int i = 0; i < hex.length(); i++) {
+            int v = Character.digit(hex.charAt(i), 16);
+            if (v < 0) {
+                // как Buffer.from(...,'hex'): обрываемся, а не бросаем
+                break;
+            }
+
+            if (hi < 0) {
+                hi = v;
+            } else {
+                tmp[out++] = (byte) ((hi << 4) | v);
+                hi = -1;
+            }
+        }
+
+        // если остался одиночный nibble (odd length) — игнорируем
+        byte[] res = new byte[out];
+        System.arraycopy(tmp, 0, res, 0, out);
+        return res;
     }
 }

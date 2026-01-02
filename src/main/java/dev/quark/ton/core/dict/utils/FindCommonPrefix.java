@@ -1,45 +1,49 @@
 package dev.quark.ton.core.dict.utils;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public final class FindCommonPrefix {
 
     private FindCommonPrefix() {}
 
-    /** 1:1 port of findCommonPrefix.ts */
     public static String findCommonPrefix(List<String> src) {
+        return findCommonPrefix(src, 0);
+    }
+
+    /** 1:1 port of findCommonPrefix(src: string[], startPos = 0) */
+    public static String findCommonPrefix(List<String> src, int startPos) {
 
         // Corner cases
-        if (src.size() == 0) {
+        if (src.isEmpty()) {
             return "";
         }
-        if (src.size() == 1) {
-            return src.get(0);
+
+        String first = src.get(0);
+        int sp = Math.max(0, startPos);
+        if (sp > first.length()) {
+            sp = first.length();
         }
 
-        // Searching for prefix
-        List<String> sorted = new ArrayList<>(src);
-        Collections.sort(sorted);
+        String r = first.substring(sp);
 
-        int size = 0;
-        String a = sorted.get(0);
-        String b = sorted.get(sorted.size() - 1);
+        for (int i = 1; i < src.size(); i++) {
+            String s = src.get(i);
 
-        int limit = Math.min(a.length(), b.length());
-        for (int i = 0; i < limit; i++) {
-            if (a.charAt(i) != b.charAt(i)) {
-                break;
+            while (!startsWithAt(s, r, sp)) {
+                r = r.substring(0, r.length() - 1);
+                if (r.isEmpty()) {
+                    return r;
+                }
             }
-            size++;
         }
 
-        // NOTE: TS returns src[0].slice(0,size), not sorted[0]
-        String firstOriginal = src.get(0);
-        if (size > firstOriginal.length()) {
-            size = firstOriginal.length();
-        }
-        return firstOriginal.substring(0, size);
+        return r;
+    }
+
+    private static boolean startsWithAt(String s, String r, int startPos) {
+        if (r.isEmpty()) return true;
+        if (startPos < 0) return false;
+        if (startPos > s.length()) return false;
+        return s.startsWith(r, startPos);
     }
 }

@@ -25,4 +25,12 @@ public class FindCommonPrefixTest {
                 "0000101"
         )));
     }
+
+    @Test
+    public void shouldFindCommonPrefixWithStartPos() {
+        assertEquals("ab", FindCommonPrefix.findCommonPrefix(List.of("xxabc", "yyabd"), 2));
+        assertEquals("c", FindCommonPrefix.findCommonPrefix(List.of("abc"), 2));
+        assertEquals("", FindCommonPrefix.findCommonPrefix(List.of("a", "b"), 1)); // обе строки после pos=1 => ""
+    }
+
 }
