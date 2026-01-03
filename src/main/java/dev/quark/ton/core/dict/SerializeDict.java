@@ -58,78 +58,45 @@ public final class SerializeDict {
         }
     }
 
-    private static <T> Map<String, T> removePrefixMap(Map<String, T> src, int length) {
-        if (length == 0) {
-            return src;
-        } else {
-            Map<String, T> res = new LinkedHashMap<>();
-            for (Map.Entry<String, T> e : src.entrySet()) {
-                res.put(e.getKey().substring(length), e.getValue());
-            }
-            return res;
-        }
-    }
-
     private static final class Forked<T> {
         final Map<String, T> left;
         final Map<String, T> right;
-
-        Forked(Map<String, T> left, Map<String, T> right) {
-            this.left = left;
-            this.right = right;
-        }
+        Forked(Map<String, T> left, Map<String, T> right) { this.left = left; this.right = right; }
     }
 
-    private static <T> Forked<T> forkMap(Map<String, T> src) {
-        if (src.size() == 0) {
-            throw new IllegalStateException("Internal inconsistency");
-        }
-
+    private static <T> Forked<T> forkMap(Map<String, T> src, int prefixLen) {
+        if (src.isEmpty()) throw new IllegalStateException("Internal inconsistency");
         Map<String, T> left = new LinkedHashMap<>();
         Map<String, T> right = new LinkedHashMap<>();
-
-        for (Map.Entry<String, T> e : src.entrySet()) {
+        for (var e : src.entrySet()) {
             String k = e.getKey();
-            T d = e.getValue();
-            if (k.startsWith("0")) {
-                left.put(k.substring(1), d);
-            } else {
-                right.put(k.substring(1), d);
-            }
+            if (k.charAt(prefixLen) == '0') left.put(k, e.getValue());
+            else right.put(k, e.getValue());
         }
-
-        if (left.size() == 0) {
-            throw new IllegalStateException("Internal inconsistency. Left emtpy.");
-        }
-        if (right.size() == 0) {
-            throw new IllegalStateException("Internal inconsistency. Right emtpy.");
-        }
-
+        if (left.isEmpty()) throw new IllegalStateException("Internal inconsistency. Left emtpy.");
+        if (right.isEmpty()) throw new IllegalStateException("Internal inconsistency. Right emtpy.");
         return new Forked<>(left, right);
     }
 
-    private static <T> Node<T> buildNode(Map<String, T> src) {
-        if (src.size() == 0) {
-            throw new IllegalStateException("Internal inconsistency");
-        }
-        if (src.size() == 1) {
-            return new Leaf<>(src.values().iterator().next());
-        }
-        Forked<T> forked = forkMap(src);
+    private static <T> Node<T> buildNode(Map<String, T> src, int prefixLen) {
+        if (src.isEmpty()) throw new IllegalStateException("Internal inconsistency");
+        if (src.size() == 1) return new Leaf<>(src.values().iterator().next());
+        Forked<T> f = forkMap(src, prefixLen);
         return new Fork<>(
-                buildEdge(forked.left),
-                buildEdge(forked.right)
+                buildEdge(f.left, prefixLen + 1),
+                buildEdge(f.right, prefixLen + 1)
         );
     }
 
-    private static <T> Edge<T> buildEdge(Map<String, T> src) {
-        if (src.size() == 0) {
-            throw new IllegalStateException("Internal inconsistency");
-        }
+    private static <T> Edge<T> buildEdge(Map<String, T> src, int prefixLen) {
+        if (src.isEmpty()) throw new IllegalStateException("Internal inconsistency");
+        String label = FindCommonPrefix.findCommonPrefix(new ArrayList<>(src.keySet()), prefixLen);
+        return new Edge<>(label, buildNode(src, label.length() + prefixLen));
+    }
 
-        // TS: findCommonPrefix(Array.from(src.keys()))
-        String label = FindCommonPrefix.findCommonPrefix(new ArrayList<>(src.keySet()));
-        return new Edge<>(label, buildNode(removePrefixMap(src, label.length())));
+    // root
+    private static <T> Edge<T> buildEdge(Map<String, T> src) {
+        return buildEdge(src, 0);
     }
 
     /** TS: export function buildTree(src, keyLength) */
