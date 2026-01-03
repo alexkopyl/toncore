@@ -20,102 +20,66 @@ public final class ParseDict {
         return res;
     }
 
+    // TS: Math.ceil(Math.log2(n + 1))
     private static int ceilLog2(int x) {
-        // TS: Math.ceil(Math.log2(n + 1))
-        // Here x is (n + 1). Need ceil(log2(x)).
-        if (x <= 1) {
-            return 0;
-        }
-        int p = 0;
-        int v = 1;
-        while (v < x) {
-            v <<= 1;
-            p++;
-        }
-        return p;
+        if (x <= 1) return 0;
+        // ceil(log2(x)) == floor(log2(x-1)) + 1
+        return 32 - Integer.numberOfLeadingZeros(x - 1);
     }
 
     private static <V> void doParse(
             BigInteger prefixValue,
-            int prefixLen,
             Slice slice,
             int n,
             Map<BigInteger, V> res,
             Function<Slice, V> extractor
     ) {
-
         // Reading label
         int lb0 = slice.loadBit() ? 1 : 0;
-        int prefixLength = 0;
-
+        int prefixLength;
         BigInteger ppVal = prefixValue;
-        int ppLen = prefixLen;
 
         if (lb0 == 0) {
-            // Short label detected
+            // Short label
             prefixLength = readUnaryLength(slice);
-
-            // Read prefix
             for (int i = 0; i < prefixLength; i++) {
                 boolean b = slice.loadBit();
                 ppVal = ppVal.shiftLeft(1).or(b ? BigInteger.ONE : BigInteger.ZERO);
-                ppLen++;
             }
         } else {
             int lb1 = slice.loadBit() ? 1 : 0;
+            int lenBits = ceilLog2(n + 1);
+
             if (lb1 == 0) {
                 // Long label detected
-                int bitsForLen = ceilLog2(n + 1);
-                long pl = slice.loadUint(bitsForLen);
-                prefixLength = (int) pl;
-
+                prefixLength = (int) slice.loadUint(lenBits);
                 for (int i = 0; i < prefixLength; i++) {
                     boolean b = slice.loadBit();
                     ppVal = ppVal.shiftLeft(1).or(b ? BigInteger.ONE : BigInteger.ZERO);
-                    ppLen++;
                 }
             } else {
                 // Same label detected
-                boolean bit = slice.loadBit();
-                int bitsForLen = ceilLog2(n + 1);
-                long pl = slice.loadUint(bitsForLen);
-                prefixLength = (int) pl;
-
+                boolean bit = slice.loadBit();                 // <-- ВАЖНО: сначала bit
+                prefixLength = (int) slice.loadUint(lenBits);  // <-- потом длина
                 for (int i = 0; i < prefixLength; i++) {
                     ppVal = ppVal.shiftLeft(1).or(bit ? BigInteger.ONE : BigInteger.ZERO);
-                    ppLen++;
                 }
             }
         }
 
         if (n - prefixLength == 0) {
             // Leaf
-            // TS: res.set(BigInt('0b' + pp), extractor(slice));
             res.put(ppVal, extractor.apply(slice));
         } else {
+            // Branch: must have two refs in non-exotic cells
             Cell left = slice.loadRef();
             Cell right = slice.loadRef();
 
-            // NOTE: Left and right branches implicitly contain prefixes '0' and '1'
             if (!left.isExotic()) {
-                doParse(
-                        ppVal.shiftLeft(1),          // + '0'
-                        ppLen + 1,
-                        left.beginParse(),
-                        n - prefixLength - 1,
-                        res,
-                        extractor
-                );
+                doParse(ppVal.shiftLeft(1), left.beginParse(), n - prefixLength - 1, res, extractor);
             }
             if (!right.isExotic()) {
-                doParse(
-                        ppVal.shiftLeft(1).or(BigInteger.ONE), // + '1'
-                        ppLen + 1,
-                        right.beginParse(),
-                        n - prefixLength - 1,
-                        res,
-                        extractor
-                );
+                doParse(ppVal.shiftLeft(1).or(BigInteger.ONE), right.beginParse(), n - prefixLength - 1, res, extractor);
             }
         }
     }
@@ -123,7 +87,7 @@ public final class ParseDict {
     public static <V> Map<BigInteger, V> parseDict(Slice sc, int keySize, Function<Slice, V> extractor) {
         Map<BigInteger, V> res = new LinkedHashMap<>();
         if (sc != null) {
-            doParse(BigInteger.ZERO, 0, sc, keySize, res, extractor);
+            doParse(BigInteger.ZERO, sc, keySize, res, extractor);
         }
         return res;
     }
