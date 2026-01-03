@@ -54,7 +54,7 @@ public final class InternalKeySerializer {
             case "a:":
                 return Address.parse(v);
             case "f:":
-                return fromHex(v);
+                return fromHexNodeLike(v);
             case "B:":
                 return deserializeBitString(v);
             default:

@@ -212,7 +212,9 @@ public final class Dictionary<K, V> implements Iterable<Map.Entry<K, V>> {
 
     public boolean delete(K key) {
         String k = InternalKeySerializer.serializeInternalKey(key);
-        return _map.remove(k) != null;
+        boolean existed = _map.containsKey(k);
+        _map.remove(k);
+        return existed;
     }
 
     public void clear() {
@@ -512,63 +514,109 @@ public final class Dictionary<K, V> implements Iterable<Map.Entry<K, V>> {
     private static DictionaryValue<Long> createIntValue(int bits) {
         return new DictionaryValue<>() {
             @Override public void serialize(Long src, Builder builder) { builder.storeInt(src, bits); }
-            @Override public Long parse(Slice src) { return src.loadInt(bits); }
+            @Override
+            public Long parse(Slice src) {
+                long v = src.loadInt(bits);
+                src.endParse();
+                return v;
+            }
+
         };
     }
 
     private static DictionaryValue<BigInteger> createBigIntValue(int bits) {
         return new DictionaryValue<>() {
             @Override public void serialize(BigInteger src, Builder builder) { builder.storeInt(src, bits); }
-            @Override public BigInteger parse(Slice src) { return src.loadIntBig(bits); }
+            @Override
+            public BigInteger parse(Slice src) {
+                BigInteger v = src.loadIntBig(bits);
+                src.endParse();
+                return v;
+            }
         };
     }
 
     private static DictionaryValue<BigInteger> createBigVarIntValue(int headerBits) {
         return new DictionaryValue<>() {
             @Override public void serialize(BigInteger src, Builder builder) { builder.storeVarInt(src, headerBits); }
-            @Override public BigInteger parse(Slice src) { return src.loadVarIntBig(headerBits); }
+            @Override
+            public BigInteger parse(Slice src) {
+                BigInteger v = src.loadVarIntBig(headerBits);
+                src.endParse();
+                return v;
+            }
         };
     }
 
     private static DictionaryValue<BigInteger> createBigVarUintValue(int headerBits) {
         return new DictionaryValue<>() {
             @Override public void serialize(BigInteger src, Builder builder) { builder.storeVarUint(src, headerBits); }
-            @Override public BigInteger parse(Slice src) { return src.loadVarUintBig(headerBits); }
+            @Override
+            public BigInteger parse(Slice src) {
+                BigInteger v = src.loadVarUintBig(headerBits);
+                src.endParse();
+                return v;
+            }
         };
     }
 
     private static DictionaryValue<Long> createUintValue(int bits) {
         return new DictionaryValue<>() {
             @Override public void serialize(Long src, Builder builder) { builder.storeUint(src, bits); }
-            @Override public Long parse(Slice src) { return src.loadUint(bits); }
+            @Override
+            public Long parse(Slice src) {
+                long v = src.loadUint(bits);
+                src.endParse();
+                return v;
+            }
         };
     }
 
     private static DictionaryValue<BigInteger> createBigUintValue(int bits) {
         return new DictionaryValue<>() {
             @Override public void serialize(BigInteger src, Builder builder) { builder.storeUint(src, bits); }
-            @Override public BigInteger parse(Slice src) { return src.loadUintBig(bits); }
+            @Override
+            public BigInteger parse(Slice src) {
+                BigInteger v = src.loadUintBig(bits);
+                src.endParse();
+                return v;
+            }
         };
     }
 
     private static DictionaryValue<Boolean> createBooleanValue() {
         return new DictionaryValue<>() {
             @Override public void serialize(Boolean src, Builder builder) { builder.storeBit(Boolean.TRUE.equals(src)); }
-            @Override public Boolean parse(Slice src) { return src.loadBit(); }
+            @Override
+            public Boolean parse(Slice src) {
+                boolean v = src.loadBit();
+                src.endParse();
+                return v;
+            }
         };
     }
 
     private static DictionaryValue<Address> createAddressValue() {
         return new DictionaryValue<>() {
             @Override public void serialize(Address src, Builder builder) { builder.storeAddress(src); }
-            @Override public Address parse(Slice src) { return src.loadAddress(); }
+            @Override
+            public Address parse(Slice src) {
+                Address v = src.loadAddress();
+                src.endParse();
+                return v;
+            }
         };
     }
 
     private static DictionaryValue<Cell> createCellValue() {
         return new DictionaryValue<>() {
             @Override public void serialize(Cell src, Builder builder) { builder.storeRef(src); }
-            @Override public Cell parse(Slice src) { return src.loadRef(); }
+            @Override
+            public Cell parse(Slice src) {
+                Cell v = src.loadRef();
+                src.endParse();
+                return v;
+            }
         };
     }
 
@@ -581,6 +629,7 @@ public final class Dictionary<K, V> implements Iterable<Map.Entry<K, V>> {
 
             @Override
             public Dictionary<K, V> parse(Slice src) {
+                src.endParse();
                 return Dictionary.load(key, value, src);
             }
         };
@@ -598,7 +647,9 @@ public final class Dictionary<K, V> implements Iterable<Map.Entry<K, V>> {
 
             @Override
             public byte[] parse(Slice src) {
-                return src.loadBuffer(size);
+                byte[] v = src.loadBuffer(size);
+                src.endParse();
+                return v;
             }
         };
     }
@@ -613,7 +664,9 @@ public final class Dictionary<K, V> implements Iterable<Map.Entry<K, V>> {
 
             @Override
             public BitString parse(Slice src) {
-                return src.loadBits(bits);
+                BitString v = src.loadBits(bits);
+                src.endParse();
+                return v;
             }
         };
     }
