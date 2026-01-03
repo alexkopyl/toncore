@@ -14,9 +14,9 @@ public enum AccountStatusChange {
         }
         // first bit was 1
         if (slice.loadBit()) {
-            return FROZEN;
+            return DELETED; // 11
         } else {
-            return DELETED;
+            return FROZEN;  // 10
         }
     }
 
