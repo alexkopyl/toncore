@@ -193,18 +193,14 @@ public final class TupleReader {
     }
 
     public byte[] readBufferOpt() {
-        TupleItem popped = peek();
-        if (popped instanceof TupleItemNull) {
+        Cell r = readCellOpt();          // <-- pop(), как в TS
+        if (r == null) {
             return null;
         }
 
-        Slice s = readCell().beginParse();
-        if (s.remainingRefs() != 0) {
-            throw new IllegalStateException("Not a buffer");
-        }
-        if (s.remainingBits() % 8 != 0) {
-            throw new IllegalStateException("Not a buffer");
-        }
+        Slice s = r.beginParse();
+        if (s.remainingRefs() != 0) throw new IllegalStateException("Not a buffer");
+        if (s.remainingBits() % 8 != 0) throw new IllegalStateException("Not a buffer");
         return s.loadBuffer(s.remainingBits() / 8);
     }
 
@@ -213,10 +209,10 @@ public final class TupleReader {
     }
 
     public String readStringOpt() {
-        TupleItem popped = peek();
-        if (popped instanceof TupleItemNull) {
+        Cell r = readCellOpt();          // <-- pop(), как в TS
+        if (r == null) {
             return null;
         }
-        return readCell().beginParse().loadStringTail();
+        return r.beginParse().loadStringTail();
     }
 }
