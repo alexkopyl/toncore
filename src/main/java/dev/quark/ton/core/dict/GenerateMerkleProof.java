@@ -61,40 +61,33 @@ public final class GenerateMerkleProof {
         return Cell.exotic(bits, List.of(c));
     }
 
-    private static Cell doGenerateMerkleProof(String prefix, Slice slice, int n, String key) {
-        // TS: const originalCell = slice.asCell();
+    private static Cell doGenerateMerkleProof(String prefix, Slice slice, int n, List<String> keys) {
         Cell originalCell = slice.asCell();
 
-        // Reading label (mutates slice)
+        if (keys.isEmpty()) {
+            return convertToPrunedBranch(originalCell);
+        }
+
         int lb0 = slice.loadBit() ? 1 : 0;
         int prefixLength = 0;
         String pp = prefix;
 
         if (lb0 == 0) {
-            // Short label
             prefixLength = ReadUnaryLength.readUnaryLength(slice);
-
             for (int i = 0; i < prefixLength; i++) {
                 pp += (slice.loadBit() ? '1' : '0');
             }
         } else {
             int lb1 = slice.loadBit() ? 1 : 0;
+            int lenBits = ceilLog2(n + 1);
             if (lb1 == 0) {
-                // Long label
-                int lenBits = ceilLog2(n + 1);
-                long pl = slice.loadUint(lenBits);
-                prefixLength = (int) pl;
-
+                prefixLength = (int) slice.loadUint(lenBits);
                 for (int i = 0; i < prefixLength; i++) {
                     pp += (slice.loadBit() ? '1' : '0');
                 }
             } else {
-                // Same label
                 char bit = slice.loadBit() ? '1' : '0';
-                int lenBits = ceilLog2(n + 1);
-                long pl = slice.loadUint(lenBits);
-                prefixLength = (int) pl;
-
+                prefixLength = (int) slice.loadUint(lenBits);
                 for (int i = 0; i < prefixLength; i++) {
                     pp += bit;
                 }
@@ -103,51 +96,35 @@ public final class GenerateMerkleProof {
 
         if (n - prefixLength == 0) {
             return originalCell;
-        } else {
-            // TS: let sl = originalCell.beginParse();
-            Slice sl = originalCell.beginParse();
-            Cell left = sl.loadRef();
-            Cell right = sl.loadRef();
-
-            // Left branch
-            if (!left.isExotic()) {
-                String needPrefix = pp + '0';
-                if (needPrefix.equals(key.substring(0, Math.min(key.length(), pp.length() + 1)))) {
-                    left = doGenerateMerkleProof(
-                            needPrefix,
-                            left.beginParse(),
-                            n - prefixLength - 1,
-                            key
-                    );
-                } else {
-                    left = convertToPrunedBranch(left);
-                }
-            }
-
-            // Right branch
-            if (!right.isExotic()) {
-                String needPrefix = pp + '1';
-                if (needPrefix.equals(key.substring(0, Math.min(key.length(), pp.length() + 1)))) {
-                    right = doGenerateMerkleProof(
-                            needPrefix,
-                            right.beginParse(),
-                            n - prefixLength - 1,
-                            key
-                    );
-                } else {
-                    right = convertToPrunedBranch(right);
-                }
-            }
-
-            // TS:
-            // return beginCell().storeSlice(sl).storeRef(left).storeRef(right).endCell();
-            return Builder.beginCell()
-                    .storeSlice(sl)
-                    .storeRef(left)
-                    .storeRef(right)
-                    .endCell();
         }
+
+        Slice sl = originalCell.beginParse();
+        Cell left = sl.loadRef();
+        Cell right = sl.loadRef();
+
+        if (!left.isExotic()) {
+            String need = pp + "0";
+            List<String> leftKeys = keys.stream()
+                    .filter(k -> k.startsWith(need))
+                    .toList();
+            left = doGenerateMerkleProof(need, left.beginParse(), n - prefixLength - 1, leftKeys);
+        }
+
+        if (!right.isExotic()) {
+            String need = pp + "1";
+            List<String> rightKeys = keys.stream()
+                    .filter(k -> k.startsWith(need))
+                    .toList();
+            right = doGenerateMerkleProof(need, right.beginParse(), n - prefixLength - 1, rightKeys);
+        }
+
+        return Builder.beginCell()
+                .storeSlice(sl)
+                .storeRef(left)
+                .storeRef(right)
+                .endCell();
     }
+
 
     private static String padStartBinary(BigInteger v, int bits) {
         // TS: keyObject.serialize(key).toString(2).padStart(bits, '0')
@@ -161,15 +138,46 @@ public final class GenerateMerkleProof {
         return sb.toString();
     }
 
-    public static <K, V> Cell generateMerkleProof(Dictionary<K, V> dict, K key, Dictionary.DictionaryKey<K> keyObject, Dictionary.DictionaryValue<V> valueObject) {
+    public static <K, V> Cell generateMerkleProofDirect(
+            Dictionary<K, V> dict,
+            List<K> keys,
+            Dictionary.DictionaryKey<K> keyObject,
+            Dictionary.DictionaryValue<V> valueObject
+    ) {
+        // TS: keys.forEach check dict.has(key)
+        for (K k : keys) {
+            if (!dict.has(k)) {
+                throw new IllegalArgumentException("Trying to generate merkle proof for a missing key \"" + k + "\"");
+            }
+        }
+
         Slice s = Builder.beginCell()
                 .storeDictDirect(dict, keyObject, valueObject)
-                .endCell()
-                .beginParse();
+                .asSlice(); // как TS: beginCell().storeDictDirect(dict).asSlice()
 
-        String binKey = padStartBinary(keyObject.serialize(key), keyObject.bits());
-        Cell proofCell = doGenerateMerkleProof("", s, keyObject.bits(), binKey);
-        return convertToMerkleProof(proofCell);
+        List<String> keyStrings = keys.stream()
+                .map(k -> padStartBinary(keyObject.serialize(k), keyObject.bits()))
+                .toList();
+
+        return doGenerateMerkleProof("", s, keyObject.bits(), keyStrings);
     }
 
+    public static <K, V> Cell generateMerkleProof(
+            Dictionary<K, V> dict,
+            List<K> keys,
+            Dictionary.DictionaryKey<K> keyObject,
+            Dictionary.DictionaryValue<V> valueObject
+    ) {
+        return convertToMerkleProof(generateMerkleProofDirect(dict, keys, keyObject, valueObject));
+    }
+
+    // удобные overload
+    public static <K, V> Cell generateMerkleProof(
+            Dictionary<K, V> dict,
+            K key,
+            Dictionary.DictionaryKey<K> keyObject,
+            Dictionary.DictionaryValue<V> valueObject
+    ) {
+        return generateMerkleProof(dict, List.of(key), keyObject, valueObject);
+    }
 }

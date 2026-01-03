@@ -43,15 +43,13 @@ public final class GenerateMerkleUpdate {
     ) {
         // TS: const oldProof = generateMerkleProof(...).refs[0];
         Cell oldProof = GenerateMerkleProof
-                .generateMerkleProof(dict, key, keyObject, valueObject)
+                .generateMerkleProof(dict, List.of(key), keyObject, valueObject)
                 .refs.get(0);
 
-        // TS: dict.set(key, newValue);
         dict.set(key, newValue);
 
-        // TS: const newProof = generateMerkleProof(...).refs[0];
         Cell newProof = GenerateMerkleProof
-                .generateMerkleProof(dict, key, keyObject, valueObject)
+                .generateMerkleProof(dict, List.of(key), keyObject, valueObject)
                 .refs.get(0);
 
         return convertToMerkleUpdate(oldProof, newProof);
