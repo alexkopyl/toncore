@@ -1,4 +1,4 @@
-package dev.quark.ton.core.utils;
+package dev.quark.ton.core.test;
 
 public final class Prando {
 
@@ -9,12 +9,12 @@ public final class Prando {
     private int value;
 
     public Prando(String seed) {
-        this.seed = hashCode(seed);
+        this.seed = getSafeSeed(hashCode(seed));
         reset();
     }
 
     public Prando(int seed) {
-        this.seed = seed;
+        this.seed = getSafeSeed(seed);
         reset();
     }
 
@@ -29,30 +29,39 @@ public final class Prando {
 
     public int nextInt(int min, int max) {
         recalculate();
-        // TS: Math.floor(map(this._value, MIN, MAX, min, max + 1))
         return (int) Math.floor(map(value, MIN, MAX, min, (double) max + 1.0d));
     }
 
     private void recalculate() {
-        // Xorshift*32
-        value ^= (value << 13);
-        value ^= (value >> 17);
-        value ^= (value << 5);
+        value = xorshift(value);
+    }
+
+    private static int xorshift(int v) {
+        v ^= (v << 13);
+        v ^= (v >> 17);
+        v ^= (v << 5);
+        return v;
     }
 
     private static double map(int val, int minFrom, int maxFrom, double minTo, double maxTo) {
-        long numerator = (long) val - (long) minFrom;     // 0..4294967295
-        long denom = (long) maxFrom - (long) minFrom;     // 4294967295
-        return ((double) numerator / (double) denom) * (maxTo - minTo) + minTo;
+        // как в TS: ((val - minFrom) / (maxFrom - minFrom)) * (maxTo-minTo) + minTo
+        return (((double) ((long) val - (long) minFrom)) / (double) ((long) maxFrom - (long) minFrom)) * (maxTo - minTo) + minTo;
     }
 
     private static int hashCode(String str) {
         int hash = 0;
         if (str != null && !str.isEmpty()) {
             for (int i = 0; i < str.length(); i++) {
-                hash = ((hash << 5) - hash) + str.charAt(i); // hash*31 + char
+                hash = (hash << 5) - hash + str.charAt(i);
+                // TS: hash |= 0  => уже int
+                hash = xorshift(hash); // ✅ как в TS
             }
         }
-        return hash; // already 32-bit
+        return hash;
+    }
+
+    private static int getSafeSeed(int seed) {
+        return seed == 0 ? 1 : seed;
     }
 }
+

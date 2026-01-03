@@ -2,6 +2,7 @@ package dev.quark.ton.core.utils;
 
 import dev.quark.ton.core.address.Address;
 import dev.quark.ton.core.address.ExternalAddress;
+import dev.quark.ton.core.test.Prando;
 
 import java.math.BigInteger;
 

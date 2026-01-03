@@ -211,16 +211,11 @@ public final class Tuple {
         if (src instanceof TupleItemSlice ts) {
             builder.storeUint(0x04, 8);
 
-            // In TS they use src.cell.bits.length and src.cell.refs.length.
-            // In Java we derive via beginParse().
-            Slice s = ts.cell().beginParse();
-            int endBits = s.remainingBits();
-            int endRefs = s.remainingRefs();
-
             builder.storeUint(0, 10);
-            builder.storeUint(endBits, 10);
+            builder.storeUint(ts.cell().bitsLength(), 10);  // как TS
             builder.storeUint(0, 3);
-            builder.storeUint(endRefs, 3);
+            builder.storeUint(ts.cell().refsCount(), 3);    // как TS
+
             builder.storeRef(ts.cell());
             return;
         }

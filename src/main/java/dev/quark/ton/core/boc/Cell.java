@@ -272,4 +272,11 @@ public final class Cell {
         public Boolean idx;
         public Boolean crc32;
     }
+
+    public int bitsLength() {
+        return bits.length();
+    }
+    public int refsCount() {
+        return refs.size();
+    }
 }
