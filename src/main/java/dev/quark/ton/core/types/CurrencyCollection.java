@@ -68,14 +68,15 @@ public final class CurrencyCollection {
     public static Consumer<Builder> storeCurrencyCollection(CurrencyCollection collection) {
         return builder -> {
             builder.storeCoins(collection.coins());
-
-            // TL-B: other:ExtraCurrencyCollection, где ExtraCurrencyCollection = HashmapE 32 (VarUInteger 32)
-            // У тебя в load: Keys.Uint(32) + Values.BigVarUint(5) -> значит и store должен быть таким же.
-            builder.storeDict(
-                    collection.other(),
-                    Dictionary.Keys.Uint(32),
-                    Dictionary.Values.BigVarUint(5)
-            );
+            if (collection.other() != null) {
+                builder.storeDict(
+                        collection.other(),
+                        Dictionary.Keys.Uint(32),
+                        Dictionary.Values.BigVarUint(5)
+                );
+            } else {
+                builder.storeBit(0);
+            }
         };
     }
 }
