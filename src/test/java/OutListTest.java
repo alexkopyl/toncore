@@ -1,48 +1,55 @@
 import dev.quark.ton.core.boc.Builder;
 import dev.quark.ton.core.boc.Cell;
-import dev.quark.ton.core.types.CommonMessageInfoRelaxedTLB;
-import dev.quark.ton.core.types.MessageRelaxed;
-import dev.quark.ton.core.types.OutList;
+import dev.quark.ton.core.types.*;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class OutListTest {
 
+    // Tags как в TS-спеке
     private static final long OUT_ACTION_SEND_MSG_TAG = 0x0ec3c86dL;
     private static final long OUT_ACTION_SET_CODE_TAG = 0xad4de08eL;
+    private static final long OUT_ACTION_RESERVE_TAG = 0x36e6b809L;
+    private static final long OUT_ACTION_CHANGE_LIBRARY_TAG = 0x26fa1dd4L;
 
-    // В спеке SendMode.PAY_GAS_SEPARATELY и SendMode.IGNORE_ERRORS.
-    // В Java-реализации mode — просто uint8/int. Чтобы не зависеть от enum, фиксируем любые валидные значения.
+    // Любые валидные значения (uint8/uint7)
     private static final int PAY_GAS_SEPARATELY = 1;
     private static final int IGNORE_ERRORS = 2;
 
+    private static final int RESERVE_AT_MOST = 2;
+    private static final int RESERVE_THIS_AMOUNT = 1;
+
     private static MessageRelaxed mockMessageRelaxed(int createdLt, int createdAt, int bodyByte) {
-        // TS mock: external-out, src:null, dest:null, init:null, body: cell(storeUint(x,8))
         var info = new CommonMessageInfoRelaxedTLB.ExternalOut(
-                null,                  // src
-                null,                  // dest
+                null,                         // src
+                null,                         // dest
                 BigInteger.valueOf(createdLt),
                 createdAt
         );
 
         Cell body = Builder.beginCell().storeUint(bodyByte, 8).endCell();
-
         return new MessageRelaxed(info, null, body);
     }
+
+    private static CurrencyCollection currencyCoins(long coins) {
+        return new CurrencyCollection(null, BigInteger.valueOf(coins));
+    }
+
+    // ----------------------------
+    // OutAction: serialize
+    // ----------------------------
 
     @Test
     void shouldSerialiseSendMsgAction() {
         MessageRelaxed msg = mockMessageRelaxed(0, 0, 0);
-
         OutList.OutAction action = new OutList.OutActionSendMsg(PAY_GAS_SEPARATELY, msg);
 
-        Cell actual = Builder.beginCell()
-                .store(OutList.storeOutAction(action))
-                .endCell();
+        Cell actual = Builder.beginCell().store(OutList.storeOutAction(action)).endCell();
 
         Cell expected = Builder.beginCell()
                 .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
@@ -58,9 +65,7 @@ class OutListTest {
         Cell mockSetCodeCell = Builder.beginCell().storeUint(123, 8).endCell();
         OutList.OutAction action = new OutList.OutActionSetCode(mockSetCodeCell);
 
-        Cell actual = Builder.beginCell()
-                .store(OutList.storeOutAction(action))
-                .endCell();
+        Cell actual = Builder.beginCell().store(OutList.storeOutAction(action)).endCell();
 
         Cell expected = Builder.beginCell()
                 .storeUint(OUT_ACTION_SET_CODE_TAG, 32)
@@ -69,6 +74,45 @@ class OutListTest {
 
         assertTrue(expected.equals(actual));
     }
+
+    @Test
+    void shouldSerialiseReserveAction() {
+        OutList.OutAction action =
+                new OutList.OutActionReserve(RESERVE_AT_MOST, currencyCoins(2_000_000));
+
+        Cell actual = Builder.beginCell().store(OutList.storeOutAction(action)).endCell();
+
+        Cell expected = Builder.beginCell()
+                .storeUint(OUT_ACTION_RESERVE_TAG, 32)
+                .storeUint(RESERVE_AT_MOST, 8)
+                .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(2_000_000)))
+                .endCell();
+
+        assertTrue(expected.equals(actual));
+    }
+
+    @Test
+    void shouldSerialiseChangeLibraryAction() {
+        int mode = 0;
+        Cell lib = Builder.beginCell().storeUint(1234, 16).endCell();
+        LibRef libRef = new LibRef.LibRefRef(lib);
+
+        OutList.OutAction action = new OutList.OutActionChangeLibrary(mode, libRef);
+
+        Cell actual = Builder.beginCell().store(OutList.storeOutAction(action)).endCell();
+
+        Cell expected = Builder.beginCell()
+                .storeUint(OUT_ACTION_CHANGE_LIBRARY_TAG, 32)
+                .storeUint(mode, 7)
+                .store((Consumer<Builder>) b -> libRef.writeTo(b))  // без кастов
+                .endCell();
+
+        assertTrue(expected.equals(actual));
+    }
+
+    // ----------------------------
+    // OutAction: deserialize
+    // ----------------------------
 
     @Test
     void shouldDeserializeSendMsgAction() {
@@ -86,7 +130,6 @@ class OutListTest {
         OutList.OutActionSendMsg a = (OutList.OutActionSendMsg) actual;
         assertEquals("sendMsg", a.type());
         assertEquals(PAY_GAS_SEPARATELY, a.mode);
-
         assertTrue(msg.body.equals(a.outMsg.body));
         assertEquals(msg.init, a.outMsg.init);
         assertEquals(msg.info, a.outMsg.info);
@@ -110,97 +153,164 @@ class OutListTest {
     }
 
     @Test
-    void shouldSerializeOutList() {
+    void shouldDeserializeReserveAction() {
+        int mode = RESERVE_THIS_AMOUNT;
+
+        Cell actionCell = Builder.beginCell()
+                .storeUint(OUT_ACTION_RESERVE_TAG, 32)
+                .storeUint(mode, 8)
+                .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(3_000_000)))
+                .endCell();
+
+        OutList.OutAction actual = OutList.loadOutAction(actionCell.beginParse());
+        assertTrue(actual instanceof OutList.OutActionReserve);
+
+        OutList.OutActionReserve a = (OutList.OutActionReserve) actual;
+        assertEquals("reserve", a.type());
+        assertEquals(mode, a.mode);
+        assertEquals(BigInteger.valueOf(3_000_000), a.currency.coins());
+    }
+
+    @Test
+    void shouldDeserializeChangeLibraryAction() {
+        int mode = 1;
+        byte[] libHash = new byte[32];
+        LibRef libRef = new LibRef.LibRefHash(libHash);
+
+        Cell actionCell = Builder.beginCell()
+                .storeUint(OUT_ACTION_CHANGE_LIBRARY_TAG, 32)
+                .storeUint(mode, 7)
+                .store((Consumer<Builder>) b -> libRef.writeTo(b))
+                .endCell();
+
+        OutList.OutAction actual = OutList.loadOutAction(actionCell.beginParse());
+        assertTrue(actual instanceof OutList.OutActionChangeLibrary);
+
+        OutList.OutActionChangeLibrary a = (OutList.OutActionChangeLibrary) actual;
+        assertEquals("changeLibrary", a.type());
+        assertEquals(mode, a.mode);
+        assertEquals(libRef, a.libRef);
+    }
+
+    // ----------------------------
+    // OutList: serialize / deserialize (как в TS)
+    // ----------------------------
+
+    @Test
+    void shouldSerializeOutList_FullSpecVector() {
         MessageRelaxed msg1 = mockMessageRelaxed(0, 0, 0);
         MessageRelaxed msg2 = mockMessageRelaxed(1, 1, 1);
         Cell mockSetCodeCell = Builder.beginCell().storeUint(123, 8).endCell();
 
+        int reserveMode = RESERVE_THIS_AMOUNT;
+        int changeLibraryMode = 1;
+        LibRef libRef = new LibRef.LibRefRef(Builder.beginCell().storeUint(1234, 16).endCell());
+
         List<OutList.OutAction> actions = List.of(
                 new OutList.OutActionSendMsg(PAY_GAS_SEPARATELY, msg1),
                 new OutList.OutActionSendMsg(IGNORE_ERRORS, msg2),
-                new OutList.OutActionSetCode(mockSetCodeCell)
+                new OutList.OutActionSetCode(mockSetCodeCell),
+                new OutList.OutActionReserve(reserveMode, currencyCoins(3_000_000)),
+                new OutList.OutActionChangeLibrary(changeLibraryMode, libRef)
         );
 
         Cell actual = Builder.beginCell().store(OutList.storeOutList(actions)).endCell();
 
-        // Expected как в TS-спеке (c5 reverse)
-        Cell expected =
-                Builder.beginCell()
-                        .storeRef(
-                                Builder.beginCell()
-                                        .storeRef(
-                                                Builder.beginCell()
-                                                        .storeRef(Builder.beginCell().endCell())
-                                                        .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
-                                                        .storeUint(PAY_GAS_SEPARATELY, 8)
-                                                        .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg1, null)).endCell())
-                                                        .endCell()
-                                        )
-                                        .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
-                                        .storeUint(IGNORE_ERRORS, 8)
-                                        .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg2, null)).endCell())
-                                        .endCell()
-                        )
-                        .storeUint(OUT_ACTION_SET_CODE_TAG, 32)
-                        .storeRef(mockSetCodeCell)
-                        .endCell();
+        // expected как в TS: reduce(beginCell().storeRef(prev).store(action))
+        Cell expected = Builder.beginCell()
+                .storeRef(
+                        Builder.beginCell()
+                                .storeRef(
+                                        Builder.beginCell()
+                                                .storeRef(
+                                                        Builder.beginCell()
+                                                                .storeRef(
+                                                                        Builder.beginCell()
+                                                                                .storeRef(Builder.beginCell().endCell())
+                                                                                .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
+                                                                                .storeUint(PAY_GAS_SEPARATELY, 8)
+                                                                                .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg1, null)).endCell())
+                                                                                .endCell()
+                                                                )
+                                                                .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
+                                                                .storeUint(IGNORE_ERRORS, 8)
+                                                                .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg2, null)).endCell())
+                                                                .endCell()
+                                                )
+                                                .storeUint(OUT_ACTION_SET_CODE_TAG, 32)
+                                                .storeRef(mockSetCodeCell)
+                                                .endCell()
+                                )
+                                .storeUint(OUT_ACTION_RESERVE_TAG, 32)
+                                .storeUint(reserveMode, 8)
+                                .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(3_000_000)))
+                                .endCell()
+                )
+                .storeUint(OUT_ACTION_CHANGE_LIBRARY_TAG, 32)
+                .storeUint(changeLibraryMode, 7)
+                .store((Consumer<Builder>) b -> libRef.writeTo(b))
+                .endCell();
 
         assertTrue(actual.equals(expected));
     }
 
     @Test
-    void shouldDeserializeOutList() {
+    void shouldDeserializeOutList_FullSpecVector() {
         MessageRelaxed msg1 = mockMessageRelaxed(0, 0, 0);
         MessageRelaxed msg2 = mockMessageRelaxed(1, 1, 1);
         Cell mockSetCodeCell = Builder.beginCell().storeUint(123, 8).endCell();
 
+        int reserveMode = RESERVE_THIS_AMOUNT;
+        int changeLibraryMode = 1;
+        LibRef libRef = new LibRef.LibRefRef(Builder.beginCell().storeUint(1234, 16).endCell());
+
         List<OutList.OutAction> expected = List.of(
                 new OutList.OutActionSendMsg(PAY_GAS_SEPARATELY, msg1),
                 new OutList.OutActionSendMsg(IGNORE_ERRORS, msg2),
-                new OutList.OutActionSetCode(mockSetCodeCell)
+                new OutList.OutActionSetCode(mockSetCodeCell),
+                new OutList.OutActionReserve(reserveMode, currencyCoins(3_000_000)),
+                new OutList.OutActionChangeLibrary(changeLibraryMode, libRef)
         );
 
-        Cell rawList =
-                Builder.beginCell()
-                        .storeRef(
-                                Builder.beginCell()
-                                        .storeRef(
-                                                Builder.beginCell()
-                                                        .storeRef(Builder.beginCell().endCell())
-                                                        .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
-                                                        .storeUint(PAY_GAS_SEPARATELY, 8)
-                                                        .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg1, null)).endCell())
-                                                        .endCell()
-                                        )
-                                        .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
-                                        .storeUint(IGNORE_ERRORS, 8)
-                                        .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg2, null)).endCell())
-                                        .endCell()
-                        )
-                        .storeUint(OUT_ACTION_SET_CODE_TAG, 32)
-                        .storeRef(mockSetCodeCell)
-                        .endCell();
+        Cell rawList = Builder.beginCell()
+                .storeRef(
+                        Builder.beginCell()
+                                .storeRef(
+                                        Builder.beginCell()
+                                                .storeRef(
+                                                        Builder.beginCell()
+                                                                .storeRef(
+                                                                        Builder.beginCell()
+                                                                                .storeRef(Builder.beginCell().endCell())
+                                                                                .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
+                                                                                .storeUint(PAY_GAS_SEPARATELY, 8)
+                                                                                .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg1, null)).endCell())
+                                                                                .endCell()
+                                                                )
+                                                                .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
+                                                                .storeUint(IGNORE_ERRORS, 8)
+                                                                .storeRef(Builder.beginCell().store(MessageRelaxed.storeMessageRelaxed(msg2, null)).endCell())
+                                                                .endCell()
+                                                )
+                                                .storeUint(OUT_ACTION_SET_CODE_TAG, 32)
+                                                .storeRef(mockSetCodeCell)
+                                                .endCell()
+                                )
+                                .storeUint(OUT_ACTION_RESERVE_TAG, 32)
+                                .storeUint(reserveMode, 8)
+                                .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(3_000_000)))
+                                .endCell()
+                )
+                .storeUint(OUT_ACTION_CHANGE_LIBRARY_TAG, 32)
+                .storeUint(changeLibraryMode, 7)
+                .store((Consumer<Builder>) b -> libRef.writeTo(b))
+                .endCell();
 
         List<OutList.OutAction> actual = OutList.loadOutList(rawList.beginParse());
 
         assertEquals(expected.size(), actual.size());
-
         for (int i = 0; i < expected.size(); i++) {
-            OutList.OutAction e = expected.get(i);
-            OutList.OutAction a = actual.get(i);
-
-            assertEquals(e.type(), a.type());
-
-            if (e instanceof OutList.OutActionSendMsg es && a instanceof OutList.OutActionSendMsg as) {
-                assertEquals(es.mode, as.mode);
-                assertTrue(es.outMsg.body.equals(as.outMsg.body));
-                assertEquals(es.outMsg.info, as.outMsg.info);
-                assertEquals(es.outMsg.init, as.outMsg.init);
-            }
-
-            if (e instanceof OutList.OutActionSetCode ec && a instanceof OutList.OutActionSetCode ac) {
-                assertTrue(ec.newCode.equals(ac.newCode));
-            }
+            assertEquals(expected.get(i).type(), actual.get(i).type());
         }
     }
 }

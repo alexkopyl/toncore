@@ -29,11 +29,40 @@ public final class OutList {
     // Tags from TS
     private static final long OUT_ACTION_SEND_MSG_TAG = 0x0ec3c86dL;
     private static final long OUT_ACTION_SET_CODE_TAG = 0xad4de08eL;
+    private static final long OUT_ACTION_RESERVE_TAG = 0x36e6b809L;
+    private static final long OUT_ACTION_CHANGE_LIBRARY_TAG = 0x26fa1dd4L;
 
     // ===== OutAction union =====
 
-    public sealed interface OutAction permits OutActionSendMsg, OutActionSetCode {
+    public sealed interface OutAction
+            permits OutActionSendMsg, OutActionSetCode, OutActionReserve, OutActionChangeLibrary {
         String type();
+    }
+
+    public static final class OutActionReserve implements OutAction {
+        public final int mode; // ReserveMode (uint8)
+        public final CurrencyCollection currency;
+
+        public OutActionReserve(int mode, CurrencyCollection currency) {
+            this.mode = mode;
+            this.currency = Objects.requireNonNull(currency, "currency");
+        }
+
+        @Override
+        public String type() { return "reserve"; }
+    }
+
+    public static final class OutActionChangeLibrary implements OutAction {
+        public final int mode; // uint7
+        public final LibRef libRef;
+
+        public OutActionChangeLibrary(int mode, LibRef libRef) {
+            this.mode = mode;
+            this.libRef = Objects.requireNonNull(libRef, "libRef");
+        }
+
+        @Override
+        public String type() { return "changeLibrary"; }
     }
 
     public static final class OutActionSendMsg implements OutAction {
@@ -76,6 +105,20 @@ public final class OutList {
             return new OutActionSetCode(newCode);
         }
 
+        // + reserve
+        if (tag == OUT_ACTION_RESERVE_TAG) {
+            int mode = (int) slice.loadUint(8);
+            CurrencyCollection currency = CurrencyCollection.loadCurrencyCollection(slice);
+            return new OutActionReserve(mode, currency);
+        }
+
+        // + changeLibrary
+        if (tag == OUT_ACTION_CHANGE_LIBRARY_TAG) {
+            int mode = (int) slice.loadUint(7);
+            LibRef libRef = LibRef.load(slice); // как ты добавлял LibRef
+            return new OutActionChangeLibrary(mode, libRef);
+        }
+
         throw new IllegalArgumentException("Unknown out action tag 0x" + Long.toHexString(tag));
     }
 
@@ -86,6 +129,10 @@ public final class OutList {
             return storeOutActionSendMsg(sendMsg);
         } else if (action instanceof OutActionSetCode setCode) {
             return storeOutActionSetCode(setCode);
+        }else if (action instanceof OutActionReserve reserve) {
+            return storeOutActionReserve(reserve);
+        } else if (action instanceof OutActionChangeLibrary ch) {
+            return storeOutActionChangeLibrary(ch);
         } else {
             throw new IllegalArgumentException("Unknown action type " + action.type());
         }
@@ -109,6 +156,28 @@ public final class OutList {
                 .storeUint(OUT_ACTION_SET_CODE_TAG, 32)
                 .storeRef(action.newCode);
     }
+
+    /*
+    action_reserve_currency#36e6b809 mode:(## 8) currency:CurrencyCollection = OutAction;
+    */
+    private static Consumer<Builder> storeOutActionReserve(OutActionReserve action) {
+        return (builder) -> builder
+                .storeUint(OUT_ACTION_RESERVE_TAG, 32)
+                .storeUint(action.mode, 8)
+                .store(CurrencyCollection.storeCurrencyCollection(action.currency));
+    }
+
+    /*
+    action_change_library#26fa1dd4 mode:(## 7) libref:LibRef = OutAction;
+    */
+    private static Consumer<Builder> storeOutActionChangeLibrary(OutActionChangeLibrary action) {
+        return (builder) -> builder
+                .storeUint(OUT_ACTION_CHANGE_LIBRARY_TAG, 32)
+                .storeUint(action.mode, 7)
+                // LibRef у тебя как Writable -> даём Consumer через method reference
+                .store((Consumer<Builder>) action.libRef::writeTo);
+    }
+
 
     // ===== OutList load/store =====
 
