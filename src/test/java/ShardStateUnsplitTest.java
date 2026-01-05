@@ -28,12 +28,10 @@ public class ShardStateUnsplitTest {
             data = data.substring(1, data.length() - 1);
         }
 
-        // если внутри вдруг есть экранированные переносы (редко, но бывает)
         data = data.replace("\\n", "").replace("\\r", "").replace("\\t", "");
-        data = data.replaceAll("\\s+", ""); // на всякий
+        data = data.replaceAll("\\s+", "");
 
-        byte[] boc = Base64.getDecoder().decode(data);
-        Cell cell = Cell.fromBoc(boc).get(0);
+        Cell cell = Cell.fromBase64(data);
         ShardStateUnsplit.loadShardStateUnsplit(cell.beginParse());
 
     }
