@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 import static dev.quark.ton.core.boc.Builder.beginCell;
+import static java.time.chrono.JapaneseEra.values;
 
 /**
  * 1:1 port of OutList.ts (also contains OutAction types).
@@ -18,13 +19,15 @@ import static dev.quark.ton.core.boc.Builder.beginCell;
  * TL-B:
  * action_send_msg#0ec3c86d mode:(## 8) out_msg:^(MessageRelaxed Any) = OutAction;
  * action_set_code#ad4de08e new_code:^Cell = OutAction;
+ * action_reserve_currency#36e6b809 mode:(## 8) currency:CurrencyCollection = OutAction;
+ * action_change_library#26fa1dd4 mode:(## 7) libref:LibRef = OutAction;
  *
  * out_list_empty$_ = OutList 0;
  * out_list$_ {n:#} prev:^(OutList n) action:OutAction = OutList (n + 1);
  */
 public final class OutList {
 
-    private OutList() { }
+    private OutList() {}
 
     // Tags from TS
     private static final long OUT_ACTION_SEND_MSG_TAG = 0x0ec3c86dL;
@@ -39,34 +42,8 @@ public final class OutList {
         String type();
     }
 
-    public static final class OutActionReserve implements OutAction {
-        public final int mode; // ReserveMode (uint8)
-        public final CurrencyCollection currency;
-
-        public OutActionReserve(int mode, CurrencyCollection currency) {
-            this.mode = mode;
-            this.currency = Objects.requireNonNull(currency, "currency");
-        }
-
-        @Override
-        public String type() { return "reserve"; }
-    }
-
-    public static final class OutActionChangeLibrary implements OutAction {
-        public final int mode; // uint7
-        public final LibRef libRef;
-
-        public OutActionChangeLibrary(int mode, LibRef libRef) {
-            this.mode = mode;
-            this.libRef = Objects.requireNonNull(libRef, "libRef");
-        }
-
-        @Override
-        public String type() { return "changeLibrary"; }
-    }
-
     public static final class OutActionSendMsg implements OutAction {
-        public final int mode; // SendMode (uint8 in cell)
+        public final int mode; // uint8 raw (SendMode bitmask)
         public final MessageRelaxed outMsg;
 
         public OutActionSendMsg(int mode, MessageRelaxed outMsg) {
@@ -89,6 +66,45 @@ public final class OutList {
         public String type() { return "setCode"; }
     }
 
+    /**
+     * Reserve action:
+     * We keep raw uint8 mode for forward-compatibility,
+     * and ALSO expose a parsed enum when known.
+     */
+    public static final class OutActionReserve implements OutAction {
+        public final int mode;                 // uint8 raw
+        public final ReserveMode modeEnum;     // nullable (known mapping)
+        public final CurrencyCollection currency;
+
+        /** Create from raw mode (for parser / forward compatibility). */
+        public OutActionReserve(int mode, CurrencyCollection currency) {
+            this.mode = mode & 0xFF;
+            this.modeEnum = ReserveMode.fromValueOrNull(this.mode);
+            this.currency = Objects.requireNonNull(currency, "currency");
+        }
+
+        /** Create from enum (for typed API). */
+        public OutActionReserve(ReserveMode mode, CurrencyCollection currency) {
+            this(Objects.requireNonNull(mode, "mode").value(), currency);
+        }
+
+        @Override
+        public String type() { return "reserve"; }
+    }
+
+    public static final class OutActionChangeLibrary implements OutAction {
+        public final int mode; // uint7 raw
+        public final LibRef libRef;
+
+        public OutActionChangeLibrary(int mode, LibRef libRef) {
+            this.mode = mode;
+            this.libRef = Objects.requireNonNull(libRef, "libRef");
+        }
+
+        @Override
+        public String type() { return "changeLibrary"; }
+    }
+
     // ===== OutAction load/store =====
 
     public static OutAction loadOutAction(Slice slice) {
@@ -105,17 +121,15 @@ public final class OutList {
             return new OutActionSetCode(newCode);
         }
 
-        // + reserve
         if (tag == OUT_ACTION_RESERVE_TAG) {
             int mode = (int) slice.loadUint(8);
             CurrencyCollection currency = CurrencyCollection.loadCurrencyCollection(slice);
-            return new OutActionReserve(mode, currency);
+            return new OutActionReserve(mode, currency); // raw mode
         }
 
-        // + changeLibrary
         if (tag == OUT_ACTION_CHANGE_LIBRARY_TAG) {
             int mode = (int) slice.loadUint(7);
-            LibRef libRef = LibRef.load(slice); // как ты добавлял LibRef
+            LibRef libRef = LibRef.load(slice);
             return new OutActionChangeLibrary(mode, libRef);
         }
 
@@ -129,18 +143,15 @@ public final class OutList {
             return storeOutActionSendMsg(sendMsg);
         } else if (action instanceof OutActionSetCode setCode) {
             return storeOutActionSetCode(setCode);
-        }else if (action instanceof OutActionReserve reserve) {
+        } else if (action instanceof OutActionReserve reserve) {
             return storeOutActionReserve(reserve);
         } else if (action instanceof OutActionChangeLibrary ch) {
             return storeOutActionChangeLibrary(ch);
-        } else {
-            throw new IllegalArgumentException("Unknown action type " + action.type());
         }
+
+        throw new IllegalArgumentException("Unknown action type " + action.type());
     }
 
-    /*
-     * action_send_msg#0ec3c86d mode:(## 8) out_msg:^(MessageRelaxed Any) = OutAction;
-     */
     private static Consumer<Builder> storeOutActionSendMsg(OutActionSendMsg action) {
         return (builder) -> builder
                 .storeUint(OUT_ACTION_SEND_MSG_TAG, 32)
@@ -148,36 +159,25 @@ public final class OutList {
                 .storeRef(beginCell().store(MessageRelaxed.storeMessageRelaxed(action.outMsg, null)).endCell());
     }
 
-    /*
-     * action_set_code#ad4de08e new_code:^Cell = OutAction;
-     */
     private static Consumer<Builder> storeOutActionSetCode(OutActionSetCode action) {
         return (builder) -> builder
                 .storeUint(OUT_ACTION_SET_CODE_TAG, 32)
                 .storeRef(action.newCode);
     }
 
-    /*
-    action_reserve_currency#36e6b809 mode:(## 8) currency:CurrencyCollection = OutAction;
-    */
     private static Consumer<Builder> storeOutActionReserve(OutActionReserve action) {
         return (builder) -> builder
                 .storeUint(OUT_ACTION_RESERVE_TAG, 32)
-                .storeUint(action.mode, 8)
+                .storeUint(action.mode, 8) // raw mode
                 .store(CurrencyCollection.storeCurrencyCollection(action.currency));
     }
 
-    /*
-    action_change_library#26fa1dd4 mode:(## 7) libref:LibRef = OutAction;
-    */
     private static Consumer<Builder> storeOutActionChangeLibrary(OutActionChangeLibrary action) {
         return (builder) -> builder
                 .storeUint(OUT_ACTION_CHANGE_LIBRARY_TAG, 32)
                 .storeUint(action.mode, 7)
-                // LibRef у тебя как Writable -> даём Consumer через method reference
                 .store((Consumer<Builder>) action.libRef::writeTo);
     }
-
 
     // ===== OutList load/store =====
 
@@ -220,4 +220,5 @@ public final class OutList {
         Collections.reverse(actions);
         return actions;
     }
+
 }

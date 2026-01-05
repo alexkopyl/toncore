@@ -21,13 +21,10 @@ class OutListTest {
     private static final int PAY_GAS_SEPARATELY = 1;
     private static final int IGNORE_ERRORS = 2;
 
-    private static final int RESERVE_AT_MOST = 2;
-    private static final int RESERVE_THIS_AMOUNT = 1;
-
     private static MessageRelaxed mockMessageRelaxed(int createdLt, int createdAt, int bodyByte) {
         var info = new CommonMessageInfoRelaxedTLB.ExternalOut(
-                null,                         // src
-                null,                         // dest
+                null,
+                null,
                 BigInteger.valueOf(createdLt),
                 createdAt
         );
@@ -77,14 +74,16 @@ class OutListTest {
 
     @Test
     void shouldSerialiseReserveAction() {
+        ReserveMode mode = ReserveMode.AT_MOST_THIS_AMOUNT;
+
         OutList.OutAction action =
-                new OutList.OutActionReserve(RESERVE_AT_MOST, currencyCoins(2_000_000));
+                new OutList.OutActionReserve(mode, currencyCoins(2_000_000));
 
         Cell actual = Builder.beginCell().store(OutList.storeOutAction(action)).endCell();
 
         Cell expected = Builder.beginCell()
                 .storeUint(OUT_ACTION_RESERVE_TAG, 32)
-                .storeUint(RESERVE_AT_MOST, 8)
+                .storeUint(mode.value(), 8)
                 .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(2_000_000)))
                 .endCell();
 
@@ -104,7 +103,7 @@ class OutListTest {
         Cell expected = Builder.beginCell()
                 .storeUint(OUT_ACTION_CHANGE_LIBRARY_TAG, 32)
                 .storeUint(mode, 7)
-                .store((Consumer<Builder>) b -> libRef.writeTo(b))  // без кастов
+                .store((Consumer<Builder>) b -> libRef.writeTo(b))
                 .endCell();
 
         assertTrue(expected.equals(actual));
@@ -154,11 +153,11 @@ class OutListTest {
 
     @Test
     void shouldDeserializeReserveAction() {
-        int mode = RESERVE_THIS_AMOUNT;
+        ReserveMode mode = ReserveMode.LEAVE_THIS_AMOUNT;
 
         Cell actionCell = Builder.beginCell()
                 .storeUint(OUT_ACTION_RESERVE_TAG, 32)
-                .storeUint(mode, 8)
+                .storeUint(mode.value(), 8)
                 .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(3_000_000)))
                 .endCell();
 
@@ -167,7 +166,8 @@ class OutListTest {
 
         OutList.OutActionReserve a = (OutList.OutActionReserve) actual;
         assertEquals("reserve", a.type());
-        assertEquals(mode, a.mode);
+        assertEquals(mode.value(), a.mode);         // raw
+        assertEquals(mode, a.modeEnum);             // enum mapping
         assertEquals(BigInteger.valueOf(3_000_000), a.currency.coins());
     }
 
@@ -202,7 +202,7 @@ class OutListTest {
         MessageRelaxed msg2 = mockMessageRelaxed(1, 1, 1);
         Cell mockSetCodeCell = Builder.beginCell().storeUint(123, 8).endCell();
 
-        int reserveMode = RESERVE_THIS_AMOUNT;
+        ReserveMode reserveMode = ReserveMode.LEAVE_THIS_AMOUNT;
         int changeLibraryMode = 1;
         LibRef libRef = new LibRef.LibRefRef(Builder.beginCell().storeUint(1234, 16).endCell());
 
@@ -216,7 +216,6 @@ class OutListTest {
 
         Cell actual = Builder.beginCell().store(OutList.storeOutList(actions)).endCell();
 
-        // expected как в TS: reduce(beginCell().storeRef(prev).store(action))
         Cell expected = Builder.beginCell()
                 .storeRef(
                         Builder.beginCell()
@@ -242,7 +241,7 @@ class OutListTest {
                                                 .endCell()
                                 )
                                 .storeUint(OUT_ACTION_RESERVE_TAG, 32)
-                                .storeUint(reserveMode, 8)
+                                .storeUint(reserveMode.value(), 8)
                                 .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(3_000_000)))
                                 .endCell()
                 )
@@ -260,7 +259,7 @@ class OutListTest {
         MessageRelaxed msg2 = mockMessageRelaxed(1, 1, 1);
         Cell mockSetCodeCell = Builder.beginCell().storeUint(123, 8).endCell();
 
-        int reserveMode = RESERVE_THIS_AMOUNT;
+        ReserveMode reserveMode = ReserveMode.LEAVE_THIS_AMOUNT;
         int changeLibraryMode = 1;
         LibRef libRef = new LibRef.LibRefRef(Builder.beginCell().storeUint(1234, 16).endCell());
 
@@ -297,7 +296,7 @@ class OutListTest {
                                                 .endCell()
                                 )
                                 .storeUint(OUT_ACTION_RESERVE_TAG, 32)
-                                .storeUint(reserveMode, 8)
+                                .storeUint(reserveMode.value(), 8)
                                 .store(CurrencyCollection.storeCurrencyCollection(currencyCoins(3_000_000)))
                                 .endCell()
                 )
