@@ -27,7 +27,7 @@ public final class TransactionActionPhase implements Writable {
     public final int messagesCreated;
 
     public final BigInteger actionListHash; // uint256
-    public final StorageUsedShort totalMessageSize;
+    public final StorageUsed totalMessageSize;
 
     public TransactionActionPhase(
             boolean success,
@@ -43,7 +43,7 @@ public final class TransactionActionPhase implements Writable {
             int skippedActions,
             int messagesCreated,
             BigInteger actionListHash,
-            StorageUsedShort totalMessageSize
+            StorageUsed totalMessageSize
     ) {
         this.success = success;
         this.valid = valid;
@@ -84,7 +84,7 @@ public final class TransactionActionPhase implements Writable {
         int messagesCreated = (int) slice.loadUint(16);
 
         BigInteger actionListHash = slice.loadUintBig(256);
-        StorageUsedShort totalMessageSize = StorageUsedShort.load(slice);
+        StorageUsed totalMessageSize = StorageUsed.loadStorageUsed(slice);
 
         return new TransactionActionPhase(
                 success, valid, noFunds,
@@ -117,7 +117,7 @@ public final class TransactionActionPhase implements Writable {
         builder.storeUint(messagesCreated, 16);
 
         builder.storeUint(actionListHash, 256);
-        builder.store(StorageUsedShort.storeStorageUsedShort(totalMessageSize));
+        builder.store(StorageUsed.storeStorageUsed(totalMessageSize));
     }
 
 
