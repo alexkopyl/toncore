@@ -34,11 +34,33 @@ public final class Cell {
      * Deserialize a single cell from base64 BOC
      */
     public static Cell fromBase64(String src) {
-        List<Cell> parsed = fromBoc(java.util.Base64.getDecoder().decode(src));
+        List<Cell> parsed = fromBoc(decodeBase64Any(src));
         if (parsed.size() != 1) {
             throw new IllegalStateException("Deserialized more than one cell");
         }
         return parsed.get(0);
+    }
+
+    private static byte[] decodeBase64Any(String src) {
+        if (src == null) {
+            throw new IllegalArgumentException("src is null");
+        }
+
+        // убираем пробелы/переводы строк на всякий
+        String s = src.replaceAll("\\s+", "");
+
+        // добавляем padding до кратности 4 (base64url часто без '=')
+        int mod = s.length() & 3; // % 4
+        if (mod != 0) {
+            s = s + "====".substring(0, 4 - mod);
+        }
+
+        java.util.Base64.Decoder decoder =
+                (s.indexOf('-') >= 0 || s.indexOf('_') >= 0)
+                        ? java.util.Base64.getUrlDecoder()
+                        : java.util.Base64.getDecoder();
+
+        return decoder.decode(s);
     }
 
     /* ============================================================ */

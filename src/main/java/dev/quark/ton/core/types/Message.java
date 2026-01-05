@@ -56,18 +56,22 @@ public final class Message {
 
             // Store init
             // Store init
+            // Store init
             if (message.init != null) {
                 builder.storeBit(true);
 
-                Builder initBuilder = Builder.beginCell().store(StateInit.storeStateInit(message.init));
+                Builder initBuilder = Builder.beginCell()
+                        .store(StateInit.storeStateInit(message.init));
 
+                // TS logic:
+                // needRef = forceRef || (availableBits - 2 < initBits + bodyBitsInline)
                 boolean needRef;
                 if (options.forceRef) {
                     needRef = true;
                 } else {
-                    boolean fitsBits = (builder.availableBits() - 1) >= initBuilder.bits();     // <- ключевая правка
-                    boolean fitsRefs = (builder.refs() + initBuilder.refs()) <= 4;              // <- добавили refs check
-                    needRef = !(fitsBits && fitsRefs);
+                    int initBits = initBuilder.bits();
+                    int bodyBits = message.body.bits.length(); // подставь свой API, если отличается
+                    needRef = (builder.availableBits() - 2) < (initBits + bodyBits);
                 }
 
                 if (needRef) {
@@ -86,13 +90,10 @@ public final class Message {
             if (options.forceRef) {
                 needRef = true;
             } else {
-                int bodyBits = message.body.bits.length();       // если у тебя bits поле — поправишь на bits.length
-                int bodyRefs = message.body.refs.size();
-                if (builder.availableBits() - 1 >= bodyBits && (builder.refs() + bodyRefs) <= 4) {
-                    needRef = false;
-                } else {
-                    needRef = true;
-                }
+                int bodyBits = message.body.bits.length();      // подставь свой API
+                int bodyRefs = message.body.refs.size();        // подставь свой API
+                needRef = (builder.availableBits() - 1) < bodyBits
+                        || (builder.refs() + bodyRefs) > 4;
             }
 
             if (needRef) {
