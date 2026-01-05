@@ -73,13 +73,19 @@ public final class MessageRelaxed {
             }
 
             // Store body
+            // Store body
             boolean needRef;
             if (options.forceRef) {
                 needRef = true;
             } else {
-                int bodyBits = message.body.bits.length();
-                int bodyRefs = message.body.refs.size();
-                if (builder.availableBits() - 1 >= bodyBits && (builder.refs() + bodyRefs) <= 4) {
+                int bodyBits = message.body.bits.length();   // подставь свой API если отличается
+                int bodyRefs = message.body.refs.size();     // подставь свой API если отличается
+
+                // TS:
+                // needRef = !(availableBits-1 >= bodyBits && refs+bodyRefs <= 4 && !body.isExotic)
+                if (builder.availableBits() - 1 >= bodyBits
+                        && (builder.refs() + bodyRefs) <= 4
+                        && !message.body.isExotic()) {
                     needRef = false;
                 } else {
                     needRef = true;
@@ -93,6 +99,7 @@ public final class MessageRelaxed {
                 builder.storeBit(false);
                 builder.storeBuilder(message.body.asBuilder());
             }
+
         };
     }
 }
