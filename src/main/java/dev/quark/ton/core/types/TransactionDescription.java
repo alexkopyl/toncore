@@ -211,9 +211,10 @@ public sealed interface TransactionDescription permits
 
                 if (sp.actionPhase != null) {
                     builder.storeBit(true);
-                    builder.storeRef(
-                            beginCell().store(TransactionActionPhase.storeTransactionActionPhase(sp.actionPhase))
-                    );
+                    Cell ref = beginCell()
+                            .store(TransactionActionPhase.storeTransactionActionPhase(sp.actionPhase))
+                            .endCell();
+                    builder.storeRef(ref);
                 } else {
                     builder.storeBit(false);
                 }
