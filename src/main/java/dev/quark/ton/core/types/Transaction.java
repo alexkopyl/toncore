@@ -7,6 +7,7 @@ import dev.quark.ton.core.dict.Dictionary;
 
 import java.math.BigInteger;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 public final class Transaction {
 
@@ -16,11 +17,12 @@ public final class Transaction {
     private final BigInteger prevTransactionLt;    // uint64
     private final long now;                        // uint32
     private final int outMessagesCount;            // uint15
+
     private final AccountStatus oldStatus;
     private final AccountStatus endStatus;
 
     private final Message inMessage; // nullable
-    private final Dictionary<BigInteger, Message> outMessages;
+    private final Dictionary<Long, Message> outMessages; // <-- uint15 key
 
     private final CurrencyCollection totalFees;
     private final HashUpdate stateUpdate;
@@ -38,26 +40,26 @@ public final class Transaction {
             AccountStatus oldStatus,
             AccountStatus endStatus,
             Message inMessage,
-            Dictionary<BigInteger, Message> outMessages,
+            Dictionary<Long, Message> outMessages,
             CurrencyCollection totalFees,
             HashUpdate stateUpdate,
             TransactionDescription description,
             Cell raw
     ) {
-        this.address = Objects.requireNonNull(address);
-        this.lt = Objects.requireNonNull(lt);
-        this.prevTransactionHash = Objects.requireNonNull(prevTransactionHash);
-        this.prevTransactionLt = Objects.requireNonNull(prevTransactionLt);
+        this.address = Objects.requireNonNull(address, "address");
+        this.lt = Objects.requireNonNull(lt, "lt");
+        this.prevTransactionHash = Objects.requireNonNull(prevTransactionHash, "prevTransactionHash");
+        this.prevTransactionLt = Objects.requireNonNull(prevTransactionLt, "prevTransactionLt");
         this.now = now;
         this.outMessagesCount = outMessagesCount;
-        this.oldStatus = Objects.requireNonNull(oldStatus);
-        this.endStatus = Objects.requireNonNull(endStatus);
+        this.oldStatus = Objects.requireNonNull(oldStatus, "oldStatus");
+        this.endStatus = Objects.requireNonNull(endStatus, "endStatus");
         this.inMessage = inMessage;
-        this.outMessages = Objects.requireNonNull(outMessages);
-        this.totalFees = Objects.requireNonNull(totalFees);
-        this.stateUpdate = Objects.requireNonNull(stateUpdate);
-        this.description = Objects.requireNonNull(description);
-        this.raw = Objects.requireNonNull(raw);
+        this.outMessages = Objects.requireNonNull(outMessages, "outMessages");
+        this.totalFees = Objects.requireNonNull(totalFees, "totalFees");
+        this.stateUpdate = Objects.requireNonNull(stateUpdate, "stateUpdate");
+        this.description = Objects.requireNonNull(description, "description");
+        this.raw = Objects.requireNonNull(raw, "raw");
     }
 
     public BigInteger address() { return address; }
@@ -69,13 +71,14 @@ public final class Transaction {
     public AccountStatus oldStatus() { return oldStatus; }
     public AccountStatus endStatus() { return endStatus; }
     public Message inMessage() { return inMessage; } // nullable
-    public Dictionary<BigInteger, Message> outMessages() { return outMessages; }
+    public Dictionary<Long, Message> outMessages() { return outMessages; }
     public CurrencyCollection totalFees() { return totalFees; }
     public HashUpdate stateUpdate() { return stateUpdate; }
     public TransactionDescription description() { return description; }
     public Cell raw() { return raw; }
     public byte[] hash() { return raw.hash(); }
 
+    // TS: loadTransaction(slice)
     public static Transaction load(Slice slice) {
         Cell raw = slice.asCell();
 
@@ -99,42 +102,32 @@ public final class Transaction {
         Slice msgSlice = msgRef.beginParse();
 
         Message inMessage = null;
-        boolean hasInMsg = msgSlice.loadBit();
-        if (hasInMsg) {
+        if (msgSlice.loadBit()) {
             Cell inMsgRef = msgSlice.loadRef();
             inMessage = Message.loadMessage(inMsgRef.beginParse());
         }
 
-        // out_msgs:(HashmapE 15 ^(Message Any))
-        // Здесь предполагается, что у вас уже есть готовый ValueCodec/Adapter для Message, аналог MessageValue из TS.
-        Dictionary<BigInteger, Message> outMessages =
-                msgSlice.loadDict(Dictionary.Keys.BigUint(15), Message.MessageValue); // см. примечание ниже
+        Dictionary<Long, Message> outMessages =
+                msgSlice.loadDict(Dictionary.Keys.Uint(15), Message.MessageValue);
 
         msgSlice.endParse();
 
         CurrencyCollection totalFees = CurrencyCollection.loadCurrencyCollection(slice);
-
         HashUpdate stateUpdate = HashUpdate.load(slice.loadRef().beginParse());
         TransactionDescription description = TransactionDescription.load(slice.loadRef().beginParse());
 
         return new Transaction(
-                address,
-                lt,
-                prevTransactionHash,
-                prevTransactionLt,
-                now,
-                outMessagesCount,
-                oldStatus,
-                endStatus,
-                inMessage,
-                outMessages,
-                totalFees,
-                stateUpdate,
-                description,
+                address, lt,
+                prevTransactionHash, prevTransactionLt,
+                now, outMessagesCount,
+                oldStatus, endStatus,
+                inMessage, outMessages,
+                totalFees, stateUpdate, description,
                 raw
         );
     }
 
+    // TS: storeTransaction(src)
     public void store(Builder builder) {
         builder.storeUint(0x07, 4);
         builder.storeUint(address, 256);
@@ -147,28 +140,34 @@ public final class Transaction {
         builder.store(AccountStatus.storeAccountStatus(oldStatus));
         builder.store(AccountStatus.storeAccountStatus(endStatus));
 
-        // ^[ in_msg:(Maybe ^Message) out_msgs:(HashmapE 15 ^Message) ]
         Builder msgBuilder = Builder.beginCell();
 
         if (inMessage != null) {
             msgBuilder.storeBit(true);
-            msgBuilder.storeRef(
-                    Builder.beginCell()
-                            .store(Message.storeMessage(inMessage, Message.StoreOptions.none()))
-            ); // storeRef(Builder) сам сделает endCell()
+            Cell inMsgCell = Builder.beginCell()
+                    .store(Message.storeMessage(inMessage, Message.StoreOptions.none()))
+                    .endCell();
+            msgBuilder.storeRef(inMsgCell);
         } else {
             msgBuilder.storeBit(false);
         }
 
-        msgBuilder.storeDict(outMessages, Dictionary.Keys.BigUint(15), Message.MessageValue);
-        builder.storeRef(msgBuilder); // можно так же, как в TS
+        msgBuilder.storeDict(outMessages, Dictionary.Keys.Uint(15), Message.MessageValue);
+
+        builder.storeRef(msgBuilder.endCell());
 
         builder.store(CurrencyCollection.storeCurrencyCollection(totalFees));
 
-        builder.storeRef(Builder.beginCell().store(stateUpdate)); // HashUpdate = Writable, ок
+        builder.storeRef(Builder.beginCell().store(stateUpdate).endCell());
         builder.storeRef(
-                Builder.beginCell().store(TransactionDescription.storeTransactionDescription(description))
+                Builder.beginCell()
+                        .store(TransactionDescription.storeTransactionDescription(description))
+                        .endCell()
         );
     }
 
+    public static Consumer<Builder> storeTransaction(Transaction tx) {
+        Objects.requireNonNull(tx, "tx");
+        return tx::store;
+    }
 }
