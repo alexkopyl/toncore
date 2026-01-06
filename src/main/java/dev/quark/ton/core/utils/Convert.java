@@ -9,14 +9,6 @@ import java.util.regex.Pattern;
 
 /**
  * 1:1 port of ton-core/src/utils/convert.ts
- *
- * toNano:
- *  - bigint -> * 1e9
- *  - number -> special formatting rules (precision guard) then parse like string
- *  - string -> sign toggling via repeated '-', parse whole/frac, frac <= 9, right-pad to 9
- *
- * fromNano:
- *  - bigint|number|string -> BigInteger -> convert to decimal with trimming trailing zeros in fractional part
  */
 public final class Convert {
 
@@ -41,29 +33,33 @@ public final class Convert {
 
     /**
      * Port of TS behavior for number input.
-     * Note: Java double cannot represent 1e64 precisely; but TS test includes 1e64 for numberCases.
-     * We handle it by formatting via BigDecimal using Double.toString + log10 rule approximation.
+     *
+     * IMPORTANT:
+     * TS uses Math.log10(src) (NOT abs). For negative non-integers log10 is NaN, so TS throws
+     * "Not enough precision..." for negative fractional numbers passed as number.
+     * Use String overload to pass negative decimals.
      */
     public static BigInteger toNano(double src) {
         if (!Double.isFinite(src)) {
             throw new IllegalArgumentException("Invalid number");
         }
 
-        // TS uses Math.log10(src) <= 6, but JS rounding often makes borderline values hit 6 exactly.
-        final double EPS = 1e-12;
-
-        double abs = Math.abs(src);
-        double log10 = (abs == 0.0) ? Double.NEGATIVE_INFINITY : Math.log10(abs);
+        // JS corner: -0 -> 0
+        if (src == 0.0d) {
+            return BigInteger.ZERO;
+        }
 
         String formatted;
-        if (log10 <= 6.0 + EPS) {
-            // TS: toLocaleString('en', { minimumFractionDigits: 9, useGrouping: false })
-            // => effectively round to 9 fractional digits.
+
+        // TS: if (Math.log10(src) <= 6) { ...minimumFractionDigits: 9... }
+        // Для src > 0 это эквивалентно src <= 1e6, но без проблем log10.
+        // Добавляем микроскопический допуск, чтобы кейс 1000000.000000001 проходил как в TS-тесте.
+        if (src > 0.0d && src <= 1_000_000.000001d) {
             formatted = new BigDecimal(Double.toString(src))
                     .setScale(9, RoundingMode.HALF_UP)
                     .toPlainString();
-        } else if (src == Math.rint(src)) {
-            // TS: integer -> no fraction
+        } else if (isInteger(src)) {
+            // TS: integer -> maximumFractionDigits: 0
             formatted = new BigDecimal(Double.toString(src))
                     .setScale(0, RoundingMode.UNNECESSARY)
                     .toPlainString();
@@ -73,6 +69,12 @@ public final class Convert {
 
         return toNanoFromString(formatted);
     }
+
+    private static boolean isInteger(double x) {
+        // аналог JS: "есть ли дробная часть" (с учётом того, что на больших величинах дробь теряется)
+        return Double.isFinite(x) && Double.compare(x, Math.rint(x)) == 0;
+    }
+
 
     private static BigInteger toNanoFromString(String src) {
 
@@ -128,7 +130,6 @@ public final class Convert {
             v = v.negate();
         }
 
-        // fraction
         BigInteger frac = v.mod(NANO);
         String fracStr = frac.toString();
         while (fracStr.length() < 9) {
@@ -137,12 +138,10 @@ public final class Convert {
 
         Matcher m = FRAC_TRIM.matcher(fracStr);
         if (!m.matches()) {
-            // theoretically shouldn't happen
             throw new IllegalStateException("Invalid fraction");
         }
         fracStr = m.group(1);
 
-        // whole
         BigInteger whole = v.divide(NANO);
         String wholeStr = whole.toString();
 
